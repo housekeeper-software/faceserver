@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+//server websocket服务器
 type server struct {
 	upgrader websocket.Upgrader
 	server   http.Server
@@ -20,11 +21,12 @@ type server struct {
 	wg       sync.WaitGroup
 	quit     chan struct{}
 	addr     string
-	conns    map[uint32]*wsConn
+	conns    map[uint32]*wsConn //所有的连接
 	seq      uint32
 	mu       sync.Mutex
 }
 
+//创建服务器对象
 func newServer(addr string) *server {
 	s := &server{
 		upgrader: websocket.Upgrader{
@@ -46,6 +48,7 @@ func newServer(addr string) *server {
 	return s
 }
 
+//启动服务器
 func (s *server) start() {
 	go func() {
 		s.server = http.Server{Addr: s.addr}
@@ -58,6 +61,7 @@ func (s *server) start() {
 	}()
 }
 
+//结束服务器
 func (s *server) close() error {
 	err := s.server.Close()
 	if err != nil {
@@ -70,6 +74,7 @@ func (s *server) close() error {
 	return nil
 }
 
+//处理新的连接
 func (s *server) handleConn(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -96,6 +101,7 @@ func (s *server) onClosed(seq uint32) {
 	delete(s.conns, seq)
 }
 
+//从connId找到对应的连接，并将response发送过去
 func (s *server) send(connId uint32, resp face.Response) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

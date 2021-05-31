@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	pongWait   = 60 * time.Second
-	pingPeriod = (pongWait * 9) / 10
+	pongWait   = 60 * time.Second    //pong接收的超时时间
+	pingPeriod = (pongWait * 9) / 10 //ping发送周期
 )
 
+//wsConn 连接对象
 type wsConn struct {
 	conn        *websocket.Conn
 	server      *server
@@ -25,6 +26,7 @@ type wsConn struct {
 	onClosed    func(seq uint32)
 }
 
+//初始化一个新的连接
 func newConn(conn *websocket.Conn, seq uint32, server *server) *wsConn {
 	s := &wsConn{
 		conn:        conn,
@@ -38,6 +40,7 @@ func newConn(conn *websocket.Conn, seq uint32, server *server) *wsConn {
 	return s
 }
 
+//关闭一个连接
 func (w *wsConn) close() {
 	if w.isClosed {
 		return
@@ -50,6 +53,7 @@ func (w *wsConn) close() {
 	w.isClosed = true
 }
 
+//启动一个连接
 func (w *wsConn) start() {
 	go func() {
 		ticker := time.NewTicker(pingPeriod)
@@ -64,6 +68,7 @@ func (w *wsConn) start() {
 
 		done := make(chan struct{})
 
+		//启动读取协程
 		go w.handleRead(done)
 
 		for {
@@ -73,9 +78,11 @@ func (w *wsConn) start() {
 				w.close()
 				//此刻不能退出，需要等待读协程退出
 			case <-done:
+				//读取协程退出了，我们可以真正退出
 				w.close()
 				return
 			case <-ticker.C:
+				//发送ping包
 				_ = w.conn.WriteMessage(websocket.PingMessage, []byte{})
 				glog.V(LVERBOSE).Infof("ws conn[%s] send ping message", w.addr)
 			case data := <-w.writeCh:
@@ -98,6 +105,10 @@ func (w *wsConn) handleRead(done chan<- struct{}) {
 		done <- struct{}{}
 	}()
 
+	/*
+		第一个包必须在指定时间内到达，否则就关闭连接
+		这可以防止恶意连接
+	*/
 	w.conn.SetReadDeadline(time.Now().Add(pongWait))
 
 	w.conn.SetPongHandler(func(string) error {
@@ -120,7 +131,9 @@ func (w *wsConn) handleRead(done chan<- struct{}) {
 			return
 		}
 		msg.ConnId = w.seq
+		//我们生成一个唯一的请求id
 		msg.ReqId = GetIdInstance().Get()
+		//提交给人脸特征提取模块处理
 		face.GetFaceInstance().DoFeature(msg)
 		glog.V(LVERBOSE).Infof("new request[%s] from:%s", msg.ID, w.addr)
 	}

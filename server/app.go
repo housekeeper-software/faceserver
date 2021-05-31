@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+//App  应用程序对象
 type App struct {
 	ws     *server
 	cmd    shell.Server
@@ -18,12 +19,14 @@ type App struct {
 	cancel context.CancelFunc
 }
 
+//创建应用程序实例
 func NewApp() *App {
 	app := &App{}
 	app.ctx, app.cancel = context.WithCancel(context.Background())
 	return app
 }
 
+//运行，需要指定服务器侦听地址，比如:9999
 func (app *App) Run(addr string) error {
 	defer func() {
 		if app.ws != nil {
@@ -35,17 +38,20 @@ func (app *App) Run(addr string) error {
 			app.cmd.Close()
 		}
 	}()
+	//设置人脸特征模块的回调
 	face.GetFaceInstance().OnCompleted = app.onCompleted
 	err := face.GetFaceInstance().Init()
 	if err != nil {
 		return err
 	}
 
+	//启动shell
 	app.cmd = shell.NewServer(app)
 	err = app.cmd.Open(shell.MakeUniqueName(shell.Dir))
 	if err != nil {
 		return err
 	}
+	//启动websocket server
 	app.ws = newServer(addr)
 	app.ws.start()
 
@@ -67,10 +73,12 @@ Loop:
 	return nil
 }
 
+//结束应用程序
 func (app *App) Quit() {
 	app.cancel()
 }
 
+//某个请求完成，我们要通知网络模块
 func (app *App) onCompleted(connId uint32, resp face.Response) {
 	app.ws.send(connId, resp)
 }

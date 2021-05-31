@@ -27,26 +27,26 @@ import (
 
 //如果C中的结构体通过typedef定义名称，在go中调用时直接使用C.xxx,否则，需要C.struct_xxx。
 var (
-	TypeFile   = 0
-	TypeBase64 = 1
+	TypeFile   = 0  //表示请求方提供的是文件绝对位置
+	TypeBase64 = 1  //表示请求方提供的是文件base64串
 
-	PErrorParameters   = -1
-	PErrorFileNotFound = -2
-	PErrorNOFeature    = -3
+	PErrorParameters   = -1  //请求方的参数错误
+	PErrorFileNotFound = -2  //请求方提供的用于人脸特征提取的文件没找到
+	PErrorNOFeature    = -3  //没有获得人脸特征，第三方库返回空
 
 	HOBOT_XFACE_METRIC_LEN   = 256
 	HOBOT_XFACE_LANDMARK_LEN = 5
 	HOBOT_XFACE_QUALITY_LEN  = 13
 )
 
-//Landmark is part of face feature
+//Landmark 是人脸特征中的一部分
 type Landmark struct {
 	Visible int     `json:"visible"`
 	X       float64 `json:"x"`
 	Y       float64 `json:"y"`
 }
 
-//FaceFeature is result of face feature recognition
+//FaceFeature 人脸特征数据结构
 type FaceFeature struct {
 	Rect struct {
 		Score float64 `json:"score"`
@@ -89,44 +89,48 @@ type FaceFeature struct {
 	} `json:"quality"`
 }
 
-//Response is result for client
+//Response 是服务器给客户端请求的应答包
 type Response struct {
-	ID      string        `json:"id"`
-	Cmd     string        `json:"cmd"`
-	Result  int           `json:"result"`
-	Content []FaceFeature `json:"content"`
+	ID      string        `json:"id"`  //客户端请求包中的标识
+	Cmd     string        `json:"cmd"` //客户端请求的命令
+	Result  int           `json:"result"` //请求处理的错误代码，0：表示成功，负数表示服务器自定义错误，其他错误由第三方库返回
+	Content []FaceFeature `json:"content"` //人脸特征
 }
 
-//Request is client request data
+//Request 是客户端的请求包格式，可以指定文件名或者文件的base64字符串
 type Request struct {
-	ConnId       uint32
-	ReqId        int64
-	ID           string `json:"id"`
-	Cmd          string `json:"cmd"`
-	PredictMode  int    `json:"predict_mode"`
-	MaxFaceCount int    `json:"max_face_count"`
-	Type         int    `json:"type"`
-	Content      string `json:"content"`
+	ConnId       uint32 //连接标识
+	ReqId        int64  //请求标识
+	ID           string `json:"id"`  //客户端请求标识串
+	Cmd          string `json:"cmd"` //请求的命令，目前只支持 'feature'，标识提取人脸特征
+	PredictMode  int    `json:"predict_mode"` //可选参数，参考第三方文档
+	MaxFaceCount int    `json:"max_face_count"` //可选最大提取人脸数目，默认为1
+	Type         int    `json:"type"` //指定content字段的内容，0：表示提供的是文件绝对路径，1：表示提供的是文件内容base64串
+	Content      string `json:"content"` //根据 type 不同内容不同
 }
 
+//XFace 人脸特征提取对象
 type XFace struct {
-	reqs        map[int64]Request
-	writeCh     chan *Request
+	reqs        map[int64]Request  //请求队列缓存，因为请求是异步的，所以需要缓存
+	writeCh     chan *Request   //网络模块通过此通道向本模块写入请求
 	mu          sync.Mutex
 	ctx         context.Context
 	cancel      context.CancelFunc
 	wg          sync.WaitGroup
-	OnCompleted func(connId uint32, resp Response)
+	OnCompleted func(connId uint32, resp Response)  //请求处理完成回调接口
 }
 
+//XFaceSingleInstance 此对象是单例
 var XFaceSingleInstance *XFace
 var once sync.Once
 
-//model 必须用相对路径，否则库不能正常初始化，这应该是第三方库的bug
+//modelName 必须用相对路径，否则库不能正常初始化，这应该是第三方库的bug
 var modelName = "./models_bit8/model_conf.json"
 
+//confName 引擎初始化的一些参数，可以改变引擎的工作状态
 var confName = "xface.json"
 
+//获取XFace的单例方法
 func GetFaceInstance() *XFace {
 	once.Do(func() {
 		XFaceSingleInstance = &XFace{
@@ -138,11 +142,14 @@ func GetFaceInstance() *XFace {
 	return XFaceSingleInstance
 }
 
+//初始化XFace以及第三方库引擎
+// @return  可能会返回失败
 func (x *XFace) Init() error {
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
 		return err
 	}
+	//xface.json应该当在app 的当前目录
 	conf := filepath.Join(dir, confName)
 
 	buf := bytes.Buffer{}
@@ -154,7 +161,9 @@ func (x *XFace) Init() error {
 	confStr := buf.String()
 	cConf := C.CString(confStr)
 	cModel := C.CString(modelName)
+	//改变当前工作目录
 	os.Chdir(dir)
+	//调用C方法初始化第三方库引擎
 	ret := C.InitFaceLib(cConf, cModel, (C.Callback)(unsafe.Pointer(C.go_callback_proxy)))
 	C.free(unsafe.Pointer(cConf))
 	C.free(unsafe.Pointer(cModel))
@@ -166,12 +175,14 @@ func (x *XFace) Init() error {
 	return nil
 }
 
+//析构XFace 引擎
 func (x *XFace) UnInit() {
 	x.cancel()
 	x.wg.Wait()
 	C.UnInitFaceLib()
 }
 
+//网络模块通过此方法向引擎申请人脸特征提取
 func (x *XFace) DoFeature(r *Request) {
 	x.writeCh <- r
 }
@@ -185,34 +196,42 @@ func (x *XFace) run() {
 		case req := <-x.writeCh:
 			x.doRequest(req)
 		case <-x.ctx.Done():
+			//上层通知要退出
 			return
 		}
 	}
 }
 
+//处理客户端请求
 func (x *XFace) doRequest(r *Request) {
 	buf := bytes.Buffer{}
 	var err error
 	var result int
 	if r.Type == TypeFile {
+		//从本地文件中加载照片
 		err = x.loadFile(r.Content, &buf)
 		if err != nil {
 			result = PErrorFileNotFound
 		}
 	} else {
+		//从content 解码照片
 		err = x.decode(r.Content, &buf)
 		if err != nil {
 			result = PErrorParameters
 		}
 	}
+	//Content内容较大，我们不再需要，尽早释放内存
 	r.Content = ""
 
 	if err != nil {
+		//加载照片失败了，我们需要通知客户端
 		x.sendErrorResponse(*r, result)
 		return
 	}
+	//调用C方法处理请求
 	n := x.feature(r.ReqId, r.PredictMode, r.MaxFaceCount, buf)
 	if n != 0 {
+		//引擎返回失败，我们通知客户端
 		x.sendErrorResponse(*r, n)
 		return
 	}

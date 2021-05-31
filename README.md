@@ -22,4 +22,12 @@ shell命令行：
 # 编译  
 因为用到了cgo，所以：   
 windows 下需要安装mingw64  
-linux 下需要安装 gcc
+设置环境变量：  
+CGO_ENABLED=1
+GOPROXY=https://goproxy.cn
+PATH中添加： D:\GNU\msys64\mingw64\bin
+
+
+linux 下需要安装 gcc  
+设置代理： go env -w GOPROXY=https://goproxy.cn,direct  
+

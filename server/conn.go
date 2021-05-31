@@ -116,7 +116,7 @@ func (w *wsConn) handleRead(done chan<- struct{}) {
 		w.messageType = mt
 		msg := &face.Request{}
 		if err := json.Unmarshal(data, msg); err != nil {
-			glog.V(LERROR).Infof("BinaryMessage must use ProbufMessage!")
+			glog.V(LERROR).Infof("json.Unmarshal %+v", err)
 			return
 		}
 		msg.ConnId = w.seq

@@ -18,3 +18,8 @@ linux平台
 shell命令行：  
 ./faceserver --cmd=stop //停止faceserver  
 ./faceserver --version //查看app版本  
+
+# 编译  
+因为用到了cgo，所以：   
+windows 下需要安装mingw64  
+linux 下需要安装 gcc

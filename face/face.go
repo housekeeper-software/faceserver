@@ -39,12 +39,14 @@ var (
 	HOBOT_XFACE_QUALITY_LEN  = 13
 )
 
+//Landmark is part of face feature
 type Landmark struct {
 	Visible int     `json:"visible"`
 	X       float64 `json:"x"`
 	Y       float64 `json:"y"`
 }
 
+//FaceFeature is result of face feature recognition
 type FaceFeature struct {
 	Rect struct {
 		Score float64 `json:"score"`
@@ -87,6 +89,7 @@ type FaceFeature struct {
 	} `json:"quality"`
 }
 
+//Response is result for client
 type Response struct {
 	ID      string        `json:"id"`
 	Cmd     string        `json:"cmd"`
@@ -94,6 +97,7 @@ type Response struct {
 	Content []FaceFeature `json:"content"`
 }
 
+//Request is client request data
 type Request struct {
 	ConnId       uint32
 	ReqId        int64
@@ -118,6 +122,7 @@ type XFace struct {
 var XFaceSingleInstance *XFace
 var once sync.Once
 
+//model 必须用相对路径，否则库不能正常初始化，这应该是第三方库的bug
 var modelName = "./models_bit8/model_conf.json"
 
 var confName = "xface.json"

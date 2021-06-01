@@ -20,6 +20,7 @@ shell命令行：
 ./faceserver --version //查看app版本  
 
 # 编译  
+## 编译环境  
 因为用到了cgo，所以：   
 windows 下需要安装mingw64  
 设置环境变量：  
@@ -30,4 +31,7 @@ PATH中添加： D:\GNU\msys64\mingw64\bin
 
 linux 下需要安装 gcc  
 设置代理： go env -w GOPROXY=https://goproxy.cn,direct  
+
+## 编译  
+go build
 
